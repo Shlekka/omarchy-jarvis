@@ -45,6 +45,34 @@ If you prefer installing system-wide via `makepkg`:
 ./bin/install
 ```
 
+## Uninstall
+
+To cleanly and safely uninstall J.A.R.V.I.S. (stops the app, removes the binary/scripts/icon, removes the Hyprland window rule with a backup, removes only the `jarvis-companion` Antigravity hook, and removes the Omarchy plugin):
+
+```bash
+~/.config/omarchy/plugins/io.github.shlekka.jarvis/bin/uninstall
+```
+
+Add `--purge` to also delete downloaded offline TTS voice models, the Python TTS virtualenv (`~/.local/share/jarvis`), and saved preferences (`~/.config/jarvis`):
+
+```bash
+~/.config/omarchy/plugins/io.github.shlekka.jarvis/bin/uninstall --purge
+```
+
+If you only want to disable or remove the Omarchy bar plugin while keeping the standalone desktop app:
+
+```bash
+omarchy plugin disable io.github.shlekka.jarvis
+# or remove the plugin folder only:
+omarchy plugin remove io.github.shlekka.jarvis
+```
+
+If you installed system-wide via `./bin/install` (`PKGBUILD`), remove the Arch package with:
+
+```bash
+sudo pacman -R jarvis
+```
+
 ## Shell IPC & Keybindings
 
 While the plugin is enabled, you can control J.A.R.V.I.S. from anywhere or bind it in `~/.config/hypr/bindings.lua`:

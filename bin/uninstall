@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/jarvis"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/jarvis"
+BIN_PATH="$HOME/.local/bin/jarvis"
+ICON_PATH="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps/jarvis.svg"
+DESKTOP_PATH="${XDG_DATA_HOME:-$HOME/.local/share}/applications/jarvis.desktop"
+PLUGIN_ID="io.github.shlekka.jarvis"
+
+PURGE=0
+REMOVE_PLUGIN=1
+
+while (( $# > 0 )); do
+  case "$1" in
+    --purge) PURGE=1; shift ;;
+    --keep-plugin) REMOVE_PLUGIN=0; shift ;;
+    -h|--help)
+      cat <<USAGE
+Usage: $(basename "$0") [--purge] [--keep-plugin]
+
+Safely stops and uninstalls J.A.R.V.I.S. and its Omarchy plugin integration:
+  - Stops any running jarvis process
+  - Removes ~/.local/bin/jarvis, helper scripts, icon, and managed launcher entry
+  - Removes the J.A.R.V.I.S. window rule from ~/.config/hypr/hyprland.lua (with backup)
+  - Removes only the "jarvis-companion" entry from ~/.gemini/config/hooks.json
+  - Removes the Omarchy shell plugin (unless --keep-plugin is passed)
+
+Options:
+  --purge        Also remove ~/.local/share/jarvis (TTS venv, voice models, sounds)
+                 and ~/.config/jarvis (settings and voice preferences).
+  --keep-plugin  Leave the Omarchy plugin registered in ~/.config/omarchy/plugins/.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+echo "==> Stopping J.A.R.V.I.S. if running..."
+pkill -x jarvis 2>/dev/null || true
+
+echo "==> Removing installed binary, scripts, and icon..."
+rm -f "$BIN_PATH" "$ICON_PATH" \
+  "$DATA_DIR/tts_worker.py" \
+  "$DATA_DIR/mic_worker.py" \
+  "$DATA_DIR/jarvis-hook" \
+  "$DATA_DIR/jarvis.sock"
+
+if [[ -f "$DESKTOP_PATH" && ! -L "$DESKTOP_PATH" ]] && grep -q '^X-Jarvis-Plugin-Managed=true$' "$DESKTOP_PATH"; then
+  rm -f "$DESKTOP_PATH"
+fi
+
+HYPR_LUA="$HOME/.config/hypr/hyprland.lua"
+if [[ -f "$HYPR_LUA" ]] && grep -q '\^jarvis\$' "$HYPR_LUA"; then
+  echo "==> Removing J.A.R.V.I.S. window rule from $HYPR_LUA..."
+  cp "$HYPR_LUA" "$HYPR_LUA.bak.jarvis-uninstall.$(date +%s)"
+  python3 - "$HYPR_LUA" <<'PY'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+pattern = re.compile(
+    r'(?:\n?-- J\.A\.R\.V\.I\.S\.[^\n]*\n)?'
+    r'o\.window\(\{\s*class\s*=\s*"\^jarvis\$"\s*\},\s*\{[^}]*\}\)\n?',
+    re.MULTILINE,
+)
+updated = pattern.sub("\n", text)
+updated = re.sub(r'\n{3,}', '\n\n', updated)
+if updated != text:
+    p.write_text(updated, encoding="utf-8")
+PY
+  if command -v hyprctl >/dev/null 2>&1; then
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+fi
+
+HOOKS_FILE="$HOME/.gemini/config/hooks.json"
+if [[ -f "$HOOKS_FILE" ]]; then
+  echo "==> Cleaning up Antigravity companion hooks in $HOOKS_FILE..."
+  python3 - "$HOOKS_FILE" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+if isinstance(data, dict) and "jarvis-companion" in data:
+    del data["jarvis-companion"]
+    if data:
+        p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    else:
+        p.unlink()
+PY
+fi
+
+if (( PURGE )); then
+  echo "==> Purging TTS models, venv, sounds, and config..."
+  rm -rf "$DATA_DIR" "$CONFIG_DIR"
+else
+  echo "    Note: Kept TTS voices/venv ($DATA_DIR) and settings ($CONFIG_DIR)."
+  echo "    Re-run with --purge to delete them as well."
+fi
+
+if (( REMOVE_PLUGIN )) && command -v omarchy >/dev/null 2>&1; then
+  if [[ -d "$HOME/.config/omarchy/plugins/$PLUGIN_ID" ]]; then
+    echo "==> Removing Omarchy plugin ($PLUGIN_ID)..."
+    omarchy plugin remove "$PLUGIN_ID" --yes || true
+  fi
+fi
+
+echo "==> J.A.R.V.I.S. uninstalled cleanly."
