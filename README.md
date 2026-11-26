@@ -3,6 +3,9 @@
 <p align="center">
   <img src="JarvisNB.png" alt="J.A.R.V.I.S. Preview" width="380" />
 </p>
+<p align="center">
+  <img src="JARVIS_Chat.png" alt="J.A.R.V.I.S. Chat Preview" width="380" />
+</p>
 
 A holographic desktop AI companion and Omarchy shell plugin for **Omarchy / Hyprland**, connected to your **Omarchy AI agents** (Antigravity, Claude Code, Codex, OpenCode, and more) with **100% offline local British neural TTS** (Kokoro-82M ONNX `bm_george`/`bm_daniel` blend, with Piper fallback) and hands-free voice input.
 
