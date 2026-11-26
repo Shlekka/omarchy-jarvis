@@ -1,0 +1,5 @@
+{
+  "tooltip.running": "J.A.R.V.I.S. — Online (left-click: hide, right-click: setup)",
+  "tooltip.standby": "J.A.R.V.I.S. — Standby (left-click: launch, right-click: setup)",
+  "tooltip.uninstalled": "J.A.R.V.I.S. — Setup required (click to build and install)"
+}

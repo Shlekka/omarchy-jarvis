@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/jarvis"
+VOICES_DIR="$DATA_DIR/voices"
+VENV_DIR="$DATA_DIR/tts-venv"
+BIN_DIR="$HOME/.local/bin"
+ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+
+INSTALL_TTS=1
+INSTALL_HYPR=1
+INSTALL_HOOKS=1
+LAUNCH_AFTER=0
+
+while (( $# > 0 )); do
+  case "$1" in
+    --no-tts) INSTALL_TTS=0; shift ;;
+    --no-hypr) INSTALL_HYPR=0; shift ;;
+    --no-hooks) INSTALL_HOOKS=0; shift ;;
+    --launch) LAUNCH_AFTER=1; shift ;;
+    -h|--help)
+      cat <<USAGE
+Usage: $(basename "$0") [--no-tts] [--no-hypr] [--no-hooks] [--launch]
+
+Builds J.A.R.V.I.S., installs the binary and helper scripts, provisions the
+offline British Kokoro-82M TTS environment, and configures Hyprland window
+rules plus Antigravity live companion hooks.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+echo "==> Checking build dependencies..."
+missing=()
+for cmd in qmake6 make g++; do
+  command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+done
+if (( ${#missing[@]} > 0 )); then
+  echo "Missing build tools: ${missing[*]}" >&2
+  echo "Install Qt6 build dependencies first, e.g.:" >&2
+  echo "  omarchy pkg add qt6-base qt6-declarative qt6-wayland gcc make" >&2
+  exit 1
+fi
+
+echo "==> Building J.A.R.V.I.S. binary..."
+"$ROOT/bin/build"
+
+echo "==> Installing binary, scripts, and icon..."
+install -Dm755 "$ROOT/build/jarvis" "$BIN_DIR/jarvis"
+install -Dm755 "$ROOT/scripts/tts_worker.py" "$DATA_DIR/tts_worker.py"
+install -Dm755 "$ROOT/scripts/mic_worker.py" "$DATA_DIR/mic_worker.py"
+install -Dm755 "$ROOT/scripts/jarvis-hook" "$DATA_DIR/jarvis-hook"
+install -Dm644 "$ROOT/pkgbuild/jarvis.svg" "$ICON_DIR/jarvis.svg"
+mkdir -p "$DATA_DIR/sounds" "$VOICES_DIR"
+
+if (( INSTALL_TTS )); then
+  echo "==> Setting up offline British TTS environment..."
+  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    if command -v uv >/dev/null 2>&1; then
+      uv venv --python 3.12 "$VENV_DIR" || uv venv "$VENV_DIR"
+    else
+      python3 -m venv "$VENV_DIR"
+    fi
+  fi
+
+  if ! "$VENV_DIR/bin/python" -c "import kokoro_onnx, numpy" >/dev/null 2>&1; then
+    if command -v uv >/dev/null 2>&1; then
+      uv pip install --python "$VENV_DIR/bin/python" kokoro-onnx numpy
+    else
+      "$VENV_DIR/bin/pip" install --upgrade kokoro-onnx numpy
+    fi
+  fi
+
+  KOKORO_BASE="https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+  if [[ ! -f "$VOICES_DIR/kokoro-v1.0.onnx" ]]; then
+    echo "    Downloading kokoro-v1.0.onnx (~310 MB)..."
+    curl -fL --retry 3 -o "$VOICES_DIR/kokoro-v1.0.onnx.part" "$KOKORO_BASE/kokoro-v1.0.onnx"
+    mv -f "$VOICES_DIR/kokoro-v1.0.onnx.part" "$VOICES_DIR/kokoro-v1.0.onnx"
+  fi
+  if [[ ! -f "$VOICES_DIR/voices-v1.0.bin" ]]; then
+    echo "    Downloading voices-v1.0.bin (~27 MB)..."
+    curl -fL --retry 3 -o "$VOICES_DIR/voices-v1.0.bin.part" "$KOKORO_BASE/voices-v1.0.bin"
+    mv -f "$VOICES_DIR/voices-v1.0.bin.part" "$VOICES_DIR/voices-v1.0.bin"
+  fi
+fi
+
+if (( INSTALL_HYPR )); then
+  HYPR_LUA="$HOME/.config/hypr/hyprland.lua"
+  if [[ -f "$HYPR_LUA" ]] && ! grep -q '\^jarvis\$' "$HYPR_LUA"; then
+    echo "==> Adding frameless floating Hyprland window rule to $HYPR_LUA..."
+    cp "$HYPR_LUA" "$HYPR_LUA.bak.jarvis.$(date +%s)"
+    python3 - "$HYPR_LUA" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+rule = (
+    "\n-- J.A.R.V.I.S. desktop character: frameless transparent floating overlay.\n"
+    'o.window({ class = "^jarvis$" }, {\n'
+    "  float = true,\n"
+    "  border_size = 0,\n"
+    "  no_shadow = true,\n"
+    "  no_blur = true,\n"
+    "})\n"
+)
+marker = "finish_keybinding_edits()"
+if marker in text:
+    text = text.replace(marker, rule.lstrip("\n") + "\n" + marker, 1)
+else:
+    text = text.rstrip() + "\n" + rule
+p.write_text(text, encoding="utf-8")
+PY
+    if command -v hyprctl >/dev/null 2>&1; then
+      hyprctl reload >/dev/null 2>&1 || true
+    fi
+  fi
+fi
+
+if (( INSTALL_HOOKS )); then
+  GEMINI_CFG="$HOME/.gemini/config"
+  if [[ -d "$GEMINI_CFG" ]]; then
+    HOOKS_FILE="$GEMINI_CFG/hooks.json"
+    echo "==> Ensuring Antigravity live companion hooks in $HOOKS_FILE..."
+    python3 - "$HOOKS_FILE" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+data = {}
+if p.is_file():
+    try:
+        loaded = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        data = {}
+if "jarvis-companion" not in data:
+    hook_cmd = "~/.local/share/jarvis/jarvis-hook"
+    data["jarvis-companion"] = {
+        "enabled": True,
+        "SessionStart": [{"type": "command", "command": hook_cmd, "timeout": 2}],
+        "PreInvocation": [{"type": "command", "command": hook_cmd, "timeout": 2}],
+        "PostToolUse": [
+            {
+                "matcher": "*",
+                "hooks": [{"type": "command", "command": hook_cmd, "timeout": 2}],
+            }
+        ],
+        "Stop": [{"type": "command", "command": hook_cmd, "timeout": 2}],
+    }
+    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+  fi
+fi
+
+echo "==> J.A.R.V.I.S. setup complete."
+
+if (( LAUNCH_AFTER )); then
+  echo "==> Launching J.A.R.V.I.S...."
+  "$ROOT/bin/jarvis-ctl" start
+fi

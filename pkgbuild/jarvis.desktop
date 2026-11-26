@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=J.A.R.V.I.S.
+Comment=Holographic desktop AI companion connected to Antigravity
+Exec=jarvis
+Icon=jarvis
+Terminal=false
+Categories=Utility;Development;
+StartupWMClass=jarvis

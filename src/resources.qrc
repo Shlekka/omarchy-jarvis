@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="Main.qml">Main.qml</file>
+        <file alias="JarvisCore.qml">JarvisCore.qml</file>
+    </qresource>
+</RCC>

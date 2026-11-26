@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.shlekka.jarvis",
+  "name": "J.A.R.V.I.S.",
+  "version": "0.1.0",
+  "author": "Shlakka",
+  "license": "MIT",
+  "description": "Holographic desktop AI companion for Omarchy & Hyprland connected to your Omarchy AI agents with offline local British neural TTS.",
+  "homepage": "https://github.com/Shlekka/omarchy-jarvis",
+  "kinds": [
+    "bar-widget",
+    "service"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "service": "Service.qml"
+  },
+  "barWidget": {
+    "displayName": "J.A.R.V.I.S.",
+    "description": "Toggle the J.A.R.V.I.S. holographic AI companion, view live status, or run setup.",
+    "category": "AI",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "autoStart": false
+    },
+    "schema": [
+      {
+        "key": "autoStart",
+        "type": "boolean",
+        "label": "Start J.A.R.V.I.S. automatically",
+        "description": "Launch J.A.R.V.I.S. automatically when the Omarchy shell starts.",
+        "defaultValue": false
+      }
+    ]
+  }
+}
