@@ -198,11 +198,16 @@ private slots:
         QCOMPARE(backend.messages().last().toMap().value("text").toString(), QString("Operation complete, sir."));
     }
 
-    void autoApproveDefaultsOnAndBypassesApprovalPrompt() {
+    void autoApproveDefaultsOffAndOptInBypassesApprovalPrompt() {
         QTemporaryDir dataDir, cfgDir;
         {
             Backend backend(dataDir.path(), cfgDir.path(), /*headless=*/true);
+            QCOMPARE(backend.autoApprove(), false);
+            QVERIFY(!backend.buildAcpArgs().contains("--dangerously-skip-permissions"));
+
+            backend.setAutoApprove(true);
             QCOMPARE(backend.autoApprove(), true);
+            QVERIFY(backend.buildAcpArgs().contains("--dangerously-skip-permissions"));
 
             QSignalSpy reqSpy(&backend, &Backend::approvalRequested);
 
@@ -224,13 +229,10 @@ private slots:
                 QVariantMap{{"optionId", "opt_always"}, {"kind", "allow_always"}},
             };
             QCOMPARE(Backend::pickAutoApproveOption(opts), QString("opt_always"));
-
-            backend.setAutoApprove(false);
-            QCOMPARE(backend.autoApprove(), false);
         }
 
         Backend reloaded(dataDir.path(), cfgDir.path(), /*headless=*/true);
-        QCOMPARE(reloaded.autoApprove(), false);
+        QCOMPARE(reloaded.autoApprove(), true);
     }
 
     void acpSpeedModelAndFastCustomizationsDefaultAndPersist() {
@@ -244,7 +246,7 @@ private slots:
             const QStringList defaultArgs = backend.buildAcpArgs();
             QVERIFY(defaultArgs.contains("acp"));
             QVERIFY(defaultArgs.contains("--stdio"));
-            QVERIFY(defaultArgs.contains("--dangerously-skip-permissions"));
+            QVERIFY(!defaultArgs.contains("--dangerously-skip-permissions"));
             QVERIFY(defaultArgs.contains("--include-default-customizations=false"));
 
             backend.cycleAcpModel();

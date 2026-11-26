@@ -230,7 +230,7 @@ private:
     bool m_micListening = false;
     bool m_micPaused = false;
     bool m_voiceHooksEnabled = true;
-    bool m_autoApprove = true;
+    bool m_autoApprove = false;
     QString m_acpModel = "gemini-3.8-flash-low";
     bool m_skipDefaultCustomizations = true;
     QString m_paletteMode = "gold";

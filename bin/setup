@@ -127,17 +127,32 @@ if (( INSTALL_HOOKS )); then
     HOOKS_FILE="$GEMINI_CFG/hooks.json"
     echo "==> Ensuring Antigravity live companion hooks in $HOOKS_FILE..."
     python3 - "$HOOKS_FILE" <<'PY'
-import json, pathlib, sys
+import json, os, pathlib, shutil, sys, tempfile
 p = pathlib.Path(sys.argv[1])
 data = {}
-if p.is_file():
-    try:
-        loaded = json.loads(p.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            data = loaded
-    except Exception:
-        data = {}
+existed = p.is_file()
+if existed:
+    raw = p.read_text(encoding="utf-8")
+    if raw.strip():
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            print(
+                f"Warning: {p} contains invalid JSON ({exc}); leaving it untouched.",
+                file=sys.stderr,
+            )
+            sys.exit(0)
+        if not isinstance(loaded, dict):
+            print(
+                f"Warning: {p} must contain a JSON object; leaving it untouched.",
+                file=sys.stderr,
+            )
+            sys.exit(0)
+        data = loaded
 if "jarvis-companion" not in data:
+    if existed:
+        backup = p.with_name(p.name + ".bak")
+        shutil.copy2(p, backup)
     hook_cmd = "~/.local/share/jarvis/jarvis-hook"
     data["jarvis-companion"] = {
         "enabled": True,
@@ -151,7 +166,15 @@ if "jarvis-companion" not in data:
         ],
         "Stop": [{"type": "command", "command": hook_cmd, "timeout": 2}],
     }
-    p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=".hooks.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(data, indent=2) + "\n")
+        os.replace(tmp_name, p)
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
 PY
   fi
 fi

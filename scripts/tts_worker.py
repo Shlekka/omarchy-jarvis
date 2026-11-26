@@ -12,10 +12,12 @@ envelope for hologram waveform synchronization.
 
 from __future__ import annotations
 
+import atexit
 import json
 import math
 import os
 import re
+import shutil
 import sys
 import tempfile
 import wave
@@ -31,8 +33,8 @@ KOKORO_MODEL_PATH = VOICES_DIR / "kokoro-v1.0.onnx"
 KOKORO_VOICES_PATH = VOICES_DIR / "voices-v1.0.bin"
 PIPER_VOICE_PATH = VOICES_DIR / "en_GB-alan-medium.onnx"
 CUSTOM_SOUNDS_DIR = DATA_DIR / "sounds"
-OUT_DIR = Path(tempfile.gettempdir()) / f"jarvis-audio-{os.getuid()}"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+OUT_DIR = Path(tempfile.mkdtemp(prefix="jarvis-audio-"))
+atexit.register(shutil.rmtree, OUT_DIR, True)
 
 DEFAULT_KOKORO_VOICE = "bm_george:0.65,bm_daniel:0.35"
 DEFAULT_KOKORO_SPEED = 1.0
@@ -155,13 +157,18 @@ def compute_envelope(samples: np.ndarray, sample_rate: int, fps: int = 30) -> li
     return env
 
 
-def write_wav(path: Path, samples: np.ndarray, sample_rate: int) -> None:
+def write_wav_temp(samples: np.ndarray, sample_rate: int) -> Path:
     pcm = np.clip(samples * 32767.0, -32768.0, 32767.0).astype(np.int16)
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        wf.writeframes(pcm.tobytes())
+    with tempfile.NamedTemporaryFile(
+        dir=OUT_DIR, prefix="utt_", suffix=".wav", delete=False
+    ) as tmp:
+        path = Path(tmp.name)
+        with wave.open(tmp, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(pcm.tobytes())
+    return path
 
 
 def resolve_kokoro_voice(kokoro, voice_spec: str):
@@ -284,8 +291,7 @@ def main() -> int:
             continue
 
         audio = np.concatenate(parts)
-        wav_path = OUT_DIR / f"utt_{req_id}.wav"
-        write_wav(wav_path, audio, sample_rate)
+        wav_path = write_wav_temp(audio, sample_rate)
         envelope = compute_envelope(audio, sample_rate, fps=30)
         duration_ms = int(len(audio) * 1000 / sample_rate)
 

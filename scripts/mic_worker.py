@@ -9,6 +9,7 @@ them via `superwhisper transcribe`, and emits JSON events on stdout.
 
 from __future__ import annotations
 
+import atexit
 import collections
 import json
 import math
@@ -33,8 +34,8 @@ SILENCE_END_FRAMES = 30  # ~0.95 s of silence ends utterance
 MIN_SPEECH_FRAMES = 8    # ~256 ms minimum utterance
 MAX_SPEECH_FRAMES = 560  # ~18 s safety cap
 
-OUT_DIR = Path(tempfile.gettempdir()) / f"jarvis-mic-{os.getuid()}"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+OUT_DIR = Path(tempfile.mkdtemp(prefix="jarvis-mic-"))
+atexit.register(shutil.rmtree, OUT_DIR, True)
 
 
 def emit(obj: dict) -> None:
@@ -42,12 +43,17 @@ def emit(obj: dict) -> None:
     sys.stdout.flush()
 
 
-def write_wav(path: Path, raw_pcm: bytes) -> None:
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(raw_pcm)
+def write_wav_temp(raw_pcm: bytes) -> Path:
+    with tempfile.NamedTemporaryFile(
+        dir=OUT_DIR, prefix="mic_", suffix=".wav", delete=False
+    ) as tmp:
+        path = Path(tmp.name)
+        with wave.open(tmp, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(raw_pcm)
+    return path
 
 
 def transcribe_with_superwhisper(wav_path: Path) -> str:
@@ -224,12 +230,12 @@ def main() -> int:
                     total_speech = len(speech_frames) - silence_count
                     if total_speech >= MIN_SPEECH_FRAMES:
                         utt_id += 1
-                        wav_path = OUT_DIR / f"mic_{utt_id}.wav"
                         pcm_data = b"".join(speech_frames)
                         speech_frames = []
                         pre_roll.clear()
+                        wav_path: Path | None = None
                         try:
-                            write_wav(wav_path, pcm_data)
+                            wav_path = write_wav_temp(pcm_data)
                             emit({"event": "transcribing"})
                             text = transcribe_with_superwhisper(wav_path)
                             if text:
@@ -237,10 +243,11 @@ def main() -> int:
                             else:
                                 emit({"event": "empty"})
                         finally:
-                            try:
-                                wav_path.unlink(missing_ok=True)
-                            except OSError:
-                                pass
+                            if wav_path is not None:
+                                try:
+                                    wav_path.unlink(missing_ok=True)
+                                except OSError:
+                                    pass
                     else:
                         speech_frames = []
                         pre_roll.clear()

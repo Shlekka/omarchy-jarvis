@@ -460,7 +460,7 @@ void Backend::loadSettings() {
     m_alwaysOnTop = obj.value("alwaysOnTop").toBool(false);
     m_muted = obj.value("muted").toBool(false);
     m_voiceHooksEnabled = obj.value("voiceHooksEnabled").toBool(true);
-    m_autoApprove = obj.value("autoApprove").toBool(true);
+    m_autoApprove = obj.value("autoApprove").toBool(false);
     const QString acpModel = obj.value("acpModel").toString("gemini-3.8-flash-low").trimmed();
     m_acpModel = acpModel;
     m_skipDefaultCustomizations = obj.value("skipDefaultCustomizations").toBool(true);
